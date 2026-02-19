@@ -1,0 +1,61 @@
+from django.apps import AppConfig
+
+MODULE_NAME = "biometric_verification"
+
+DEFAULT_CFG = {
+    "provider": "deepface",
+    "provider_config": {
+        "model_name": "ArcFace",
+        "detector_backend": "opencv",
+    },
+    "store_embeddings": True,
+    "similarity_threshold": 0.68,
+    "max_image_size_px": 1024,
+    "gql_mutation_verify_face_perms": [],
+    "gql_mutation_compute_embedding_perms": [],
+}
+
+# Maps uppercase Django settings keys → lowercase ModuleConfiguration keys.
+# Allows operators to configure via settings.BIOMETRIC_VERIFICATION using either
+# style: PROVIDER / provider, STORE_EMBEDDINGS / store_embeddings, etc.
+_SETTINGS_KEY_MAP = {
+    "PROVIDER": "provider",
+    "PROVIDER_CONFIG": "provider_config",
+    "STORE_EMBEDDINGS": "store_embeddings",
+    "SIMILARITY_THRESHOLD": "similarity_threshold",
+    "MAX_IMAGE_SIZE_PX": "max_image_size_px",
+    "GQL_MUTATION_VERIFY_FACE_PERMS": "gql_mutation_verify_face_perms",
+    "GQL_MUTATION_COMPUTE_EMBEDDING_PERMS": "gql_mutation_compute_embedding_perms",
+}
+
+
+class BiometricVerificationConfig(AppConfig):
+    name = MODULE_NAME
+
+    provider = None
+    provider_config = {}
+    store_embeddings = True
+    similarity_threshold = 0.68
+    max_image_size_px = 1024
+    gql_mutation_verify_face_perms = []
+    gql_mutation_compute_embedding_perms = []
+
+    def __load_config(self, cfg):
+        for field, value in cfg.items():
+            if hasattr(BiometricVerificationConfig, field):
+                setattr(BiometricVerificationConfig, field, value)
+
+    def ready(self):
+        from core.models import ModuleConfiguration
+        from django.conf import settings
+
+        # 1. Load from DB / defaults (standard openIMIS pattern)
+        cfg = ModuleConfiguration.get_or_default(MODULE_NAME, DEFAULT_CFG)
+
+        # 2. django.conf.settings.BIOMETRIC_VERIFICATION overrides DB config.
+        #    Accepts both UPPER_CASE and lower_case keys.
+        for key, value in getattr(settings, "BIOMETRIC_VERIFICATION", {}).items():
+            normalised = _SETTINGS_KEY_MAP.get(key.upper(), key.lower())
+            cfg[normalised] = value
+
+        self.__load_config(cfg)
