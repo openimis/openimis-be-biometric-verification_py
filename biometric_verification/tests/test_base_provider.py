@@ -7,7 +7,7 @@ Covers:
 - BaseBiometricProvider.verify_from_embedding default implementation
 """
 import math
-from django.test import TestCase
+from django.test import SimpleTestCase
 from unittest.mock import patch
 
 from biometric_verification.providers.base import (
@@ -38,7 +38,7 @@ class _StubProvider(BaseBiometricProvider):
 # VerificationResult
 # ---------------------------------------------------------------------------
 
-class TestVerificationResult(TestCase):
+class TestVerificationResult(SimpleTestCase):
 
     def test_defaults(self):
         r = VerificationResult(verified=True)
@@ -68,7 +68,7 @@ class TestVerificationResult(TestCase):
 # _cosine_distance
 # ---------------------------------------------------------------------------
 
-class TestCosineDistance(TestCase):
+class TestCosineDistance(SimpleTestCase):
 
     def test_identical_vectors(self):
         v = [1.0, 2.0, 3.0]
@@ -98,7 +98,7 @@ class TestCosineDistance(TestCase):
 # BaseBiometricProvider.verify_from_embedding (default implementation)
 # ---------------------------------------------------------------------------
 
-class TestVerifyFromEmbedding(TestCase):
+class TestVerifyFromEmbedding(SimpleTestCase):
 
     def _make_provider(self, probe_embedding):
         return _StubProvider(embedding=probe_embedding)

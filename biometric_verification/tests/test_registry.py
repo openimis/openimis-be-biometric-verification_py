@@ -9,7 +9,7 @@ Covers:
 - Invalid class raises TypeError
 - available_providers() reflects registrations
 """
-from django.test import TestCase
+from django.test import SimpleTestCase
 from unittest.mock import patch
 
 from biometric_verification.providers.base import BaseBiometricProvider, VerificationResult
@@ -47,7 +47,7 @@ class _BetaProvider(BaseBiometricProvider):
 # Tests
 # ---------------------------------------------------------------------------
 
-class TestProviderRegistry(TestCase):
+class TestProviderRegistry(SimpleTestCase):
 
     def setUp(self):
         # Isolate each test from the global registry state.

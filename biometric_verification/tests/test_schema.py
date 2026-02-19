@@ -14,7 +14,7 @@ Covers:
 from unittest.mock import MagicMock, patch
 
 from django.core.exceptions import PermissionDenied
-from django.test import TestCase
+from django.test import SimpleTestCase
 
 from biometric_verification.schema import (
     ComputeInsureeEmbeddingMutation,
@@ -69,7 +69,7 @@ def _mock_embedding_result(success=True):
 # VerifyFaceMutation
 # ---------------------------------------------------------------------------
 
-class TestVerifyFaceMutation(TestCase):
+class TestVerifyFaceMutation(SimpleTestCase):
 
     # --- permission guard ---
 
@@ -163,7 +163,7 @@ class TestVerifyFaceMutation(TestCase):
 # ComputeInsureeEmbeddingMutation
 # ---------------------------------------------------------------------------
 
-class TestComputeInsureeEmbeddingMutation(TestCase):
+class TestComputeInsureeEmbeddingMutation(SimpleTestCase):
 
     # --- permission guard ---
 

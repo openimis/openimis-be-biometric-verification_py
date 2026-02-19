@@ -9,9 +9,11 @@ Covers:
 """
 import base64
 import os
+import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch, PropertyMock
 
-from django.test import TestCase
+from django.test import SimpleTestCase
 
 from biometric_verification.providers.base import VerificationResult
 from biometric_verification.services import BiometricService
@@ -39,7 +41,7 @@ def _make_verified_result(**kwargs):
 # _decode_frame
 # ---------------------------------------------------------------------------
 
-class TestDecodeFrame(TestCase):
+class TestDecodeFrame(SimpleTestCase):
 
     def test_plain_base64(self):
         raw = b"hello world"
@@ -62,7 +64,7 @@ class TestDecodeFrame(TestCase):
 # _fetch_insuree_photo
 # ---------------------------------------------------------------------------
 
-class TestFetchInsureePhoto(TestCase):
+class TestFetchInsureePhoto(SimpleTestCase):
 
     def _make_insuree(self, folder="2024/01", filename="photo.jpg"):
         photo = MagicMock()
@@ -74,18 +76,20 @@ class TestFetchInsureePhoto(TestCase):
         return insuree
 
     @patch("biometric_verification.services.InsureeConfig")
-    def test_returns_file_bytes(self, mock_cfg, tmp_path):
+    def test_returns_file_bytes(self, mock_cfg):
         # Arrange
-        photo_dir = tmp_path / "2024" / "01"
-        photo_dir.mkdir(parents=True)
-        photo_file = photo_dir / "photo.jpg"
-        photo_file.write_bytes(b"JPEG_DATA")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            photo_dir = tmp_path / "2024" / "01"
+            photo_dir.mkdir(parents=True)
+            photo_file = photo_dir / "photo.jpg"
+            photo_file.write_bytes(b"JPEG_DATA")
 
-        mock_cfg.insuree_photos_root_path = str(tmp_path)
-        insuree = self._make_insuree()
+            mock_cfg.insuree_photos_root_path = str(tmp_path)
+            insuree = self._make_insuree()
 
-        # Act
-        result = BiometricService._fetch_insuree_photo(insuree)
+            # Act
+            result = BiometricService._fetch_insuree_photo(insuree)
 
         self.assertEqual(result, b"JPEG_DATA")
 
@@ -120,7 +124,7 @@ class TestFetchInsureePhoto(TestCase):
 # verify_face
 # ---------------------------------------------------------------------------
 
-class TestVerifyFace(TestCase):
+class TestVerifyFace(SimpleTestCase):
 
     def _mock_provider(self, result=None):
         provider = MagicMock()
@@ -214,7 +218,7 @@ class TestVerifyFace(TestCase):
 # compute_insuree_embedding
 # ---------------------------------------------------------------------------
 
-class TestComputeInsureeEmbedding(TestCase):
+class TestComputeInsureeEmbedding(SimpleTestCase):
 
     @patch("biometric_verification.services.timezone")
     @patch("biometric_verification.services.BiometricEmbedding")
