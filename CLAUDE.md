@@ -44,6 +44,11 @@ The architecture uses a **provider pattern**: DeepFace is the default local prov
 | `providers/deepface_provider.py` | Done | DeepFace implementation (ArcFace default) |
 | `providers/external/` | Pending | AWS, Azure, custom provider templates |
 | `admin.py` | Pending | Django admin for `BiometricEmbedding` and `ModuleConfiguration` |
+| `tests/__init__.py` | Done | Package marker |
+| `tests/test_base_provider.py` | Done | VerificationResult, _cosine_distance, verify_from_embedding |
+| `tests/test_registry.py` | Done | register, get_active_provider, singleton, KeyError/TypeError |
+| `tests/test_services.py` | Done | _decode_frame, _fetch_insuree_photo, verify_face, compute_insuree_embedding |
+| `tests/test_schema.py` | Done | GraphQL mutation permission guards + service delegation |
 
 ---
 
@@ -68,6 +73,12 @@ openimis-be-biometric_verification_py/
 │   │       └── custom_provider.py   🔲 Template for licensed 3rd-party SDKs
 │   ├── admin.py               🔲 Django admin registration
 │   ├── migrations/            ✅ Generated via makemigrations
+│   ├── tests/
+│   │   ├── __init__.py        ✅
+│   │   ├── test_base_provider.py ✅ VerificationResult, _cosine_distance, verify_from_embedding
+│   │   ├── test_registry.py   ✅ ProviderRegistry — register, singleton, errors
+│   │   ├── test_services.py   ✅ BiometricService — decode, fetch photo, verify, embed
+│   │   └── test_schema.py     ✅ GraphQL mutations — permissions + service delegation
 │   └── urls.py                ✅ Empty (GraphQL-only, no REST endpoints)
 ├── setup.py                   ✅ extras_require: deepface / aws / azure
 ├── README.md                  ✅
