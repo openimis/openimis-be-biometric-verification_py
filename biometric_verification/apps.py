@@ -29,6 +29,24 @@ _SETTINGS_KEY_MAP = {
 }
 
 
+# Mutations that are publicly accessible without a JWT token.
+# Added to settings.GRAPHQL_JWT["JWT_ALLOW_ANY_CLASSES"] at app startup.
+_PUBLIC_MUTATIONS = [
+    "biometric_verification.schema.VerifyFaceMutation",
+]
+
+
+def _whitelist_public_mutations(settings):
+    """Append public mutation classes to graphql_jwt's allow-any list."""
+    jwt_settings = getattr(settings, "GRAPHQL_JWT", {})
+    allow_any = jwt_settings.get("JWT_ALLOW_ANY_CLASSES", [])
+    for cls_path in _PUBLIC_MUTATIONS:
+        if cls_path not in allow_any:
+            allow_any.append(cls_path)
+    jwt_settings["JWT_ALLOW_ANY_CLASSES"] = allow_any
+    settings.GRAPHQL_JWT = jwt_settings
+
+
 class BiometricVerificationConfig(AppConfig):
     name = MODULE_NAME
 
@@ -59,3 +77,8 @@ class BiometricVerificationConfig(AppConfig):
             cfg[normalised] = value
 
         self.__load_config(cfg)
+
+        # 3. Whitelist verifyFace so it can be called without a JWT.
+        #    This enables the public kiosk page (see views.py / SECURITY.md).
+        #    ⚠️  Read SECURITY.md before deploying to production.
+        _whitelist_public_mutations(settings)

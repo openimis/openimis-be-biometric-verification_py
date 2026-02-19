@@ -44,6 +44,9 @@ The architecture uses a **provider pattern**: DeepFace is the default local prov
 | `providers/deepface_provider.py` | Done | DeepFace implementation (ArcFace default) |
 | `providers/external/` | Pending | AWS, Azure, custom provider templates |
 | `admin.py` | Pending | Django admin for `BiometricEmbedding` and `ModuleConfiguration` |
+| `views.py` | Done | Stub — kiosk UI moved to frontend module |
+| `urls.py` | Done | Empty — kiosk UI served by openimis-fe-biometric-verification |
+| `SECURITY.md` | Done | Risk assessment and mandatory mitigations for the public endpoint |
 | `tests/__init__.py` | Done | Package marker |
 | `tests/test_base_provider.py` | Done | VerificationResult, _cosine_distance, verify_from_embedding |
 | `tests/test_registry.py` | Done | register, get_active_provider, singleton, KeyError/TypeError |
@@ -72,6 +75,7 @@ openimis-be-biometric_verification_py/
 │   │       ├── azure_provider.py     🔲
 │   │       └── custom_provider.py   🔲 Template for licensed 3rd-party SDKs
 │   ├── admin.py               🔲 Django admin registration
+│   ├── views.py               ✅ Public kiosk page (no auth)
 │   ├── migrations/            ✅ Generated via makemigrations
 │   ├── tests/
 │   │   ├── __init__.py        ✅
@@ -79,7 +83,7 @@ openimis-be-biometric_verification_py/
 │   │   ├── test_registry.py   ✅ ProviderRegistry — register, singleton, errors
 │   │   ├── test_services.py   ✅ BiometricService — decode, fetch photo, verify, embed
 │   │   └── test_schema.py     ✅ GraphQL mutations — permissions + service delegation
-│   └── urls.py                ✅ Empty (GraphQL-only, no REST endpoints)
+│   └── urls.py                ✅ /biometric_verification/verify/ kiosk route
 ├── setup.py                   ✅ extras_require: deepface / aws / azure
 ├── README.md                  ✅
 └── CLAUDE.md                  ✅ This file

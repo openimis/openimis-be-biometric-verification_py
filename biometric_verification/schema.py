@@ -70,14 +70,17 @@ class VerifyFaceMutation(graphene.Mutation):
     @classmethod
     def mutate(cls, root, info, insuree_uuid, frame_b64):
         user = info.context.user
-        if user.is_anonymous:
-            raise PermissionDenied(_("unauthorized"))
-        if BiometricVerificationConfig.gql_mutation_verify_face_perms:
-            if not user.has_perms(BiometricVerificationConfig.gql_mutation_verify_face_perms):
-                raise PermissionDenied(_("unauthorized"))
 
-        # Import deferred — service layer may not be available yet during
-        # early module loading.
+        # verifyFace is whitelisted in JWT_ALLOW_ANY_CLASSES so anonymous
+        # callers (public kiosk page) are allowed through.
+        # Authenticated users are still subject to permission checks if
+        # gql_mutation_verify_face_perms is configured.
+        # See SECURITY.md for the risk assessment of this design choice.
+        if not user.is_anonymous:
+            if BiometricVerificationConfig.gql_mutation_verify_face_perms:
+                if not user.has_perms(BiometricVerificationConfig.gql_mutation_verify_face_perms):
+                    raise PermissionDenied(_("unauthorized"))
+
         from .services import BiometricService  # noqa: PLC0415
         return BiometricService.verify_face(
             insuree_uuid=insuree_uuid,
