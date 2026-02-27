@@ -13,6 +13,9 @@ DEFAULT_CFG = {
     "max_image_size_px": 1024,
     "gql_mutation_verify_face_perms": [],
     "gql_mutation_compute_embedding_perms": [],
+    # WebSocket streaming settings
+    "sampling_interval_seconds": 5,  # Time between verifications (5 sec = 12 verifs/min)
+    "websocket_auth_tokens": [],     # Optional list of auth tokens; empty = public access
 }
 
 # Maps uppercase Django settings keys → lowercase ModuleConfiguration keys.
@@ -26,6 +29,8 @@ _SETTINGS_KEY_MAP = {
     "MAX_IMAGE_SIZE_PX": "max_image_size_px",
     "GQL_MUTATION_VERIFY_FACE_PERMS": "gql_mutation_verify_face_perms",
     "GQL_MUTATION_COMPUTE_EMBEDDING_PERMS": "gql_mutation_compute_embedding_perms",
+    "SAMPLING_INTERVAL_SECONDS": "sampling_interval_seconds",
+    "WEBSOCKET_AUTH_TOKENS": "websocket_auth_tokens",
 }
 
 
@@ -57,6 +62,9 @@ class BiometricVerificationConfig(AppConfig):
     max_image_size_px = 1024
     gql_mutation_verify_face_perms = []
     gql_mutation_compute_embedding_perms = []
+    # WebSocket streaming settings
+    sampling_interval_seconds = 5
+    websocket_auth_tokens = []
 
     def __load_config(self, cfg):
         for field, value in cfg.items():
@@ -82,3 +90,6 @@ class BiometricVerificationConfig(AppConfig):
         #    This enables the public kiosk page (see views.py / SECURITY.md).
         #    ⚠️  Read SECURITY.md before deploying to production.
         _whitelist_public_mutations(settings)
+
+        # 4. Register Django signals for automatic claim risk score updates
+        from . import signals  # noqa: F401

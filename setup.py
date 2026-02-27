@@ -23,11 +23,13 @@ setup(
     ],
     extras_require={
         # Local inference — pip install "openimis-be-biometric_verification[deepface]"
+        # Note: opencv-python-headless MUST be installed before deepface
+        # to avoid deepface installing opencv-python (with GUI deps)
         'deepface': [
+            'opencv-python-headless>=4.9.0',  # Install FIRST to satisfy opencv requirements
+            'numpy>=2.0',
+            'tf-keras>=2.17.0',
             'deepface>=0.0.93',
-            'opencv-python-headless>=4.9.0',
-            'tf-keras',
-            'numpy',
         ],
         # AWS Rekognition — pip install "openimis-be-biometric_verification[aws]"
         'aws': [

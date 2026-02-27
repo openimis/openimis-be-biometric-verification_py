@@ -2,6 +2,7 @@ import uuid
 import logging
 
 from django.db import models
+from core.models import HistoryModel
 
 logger = logging.getLogger(__name__)
 
@@ -84,3 +85,98 @@ class BiometricEmbedding(models.Model):
     @property
     def is_active(self):
         return self.validity_to is None
+
+
+class ClaimFacialAudit(HistoryModel):
+    """
+    Records each biometric checkpoint during the patient's journey
+    in the FOSA (Facility Of Services Administration) workflow.
+
+    This model allows tracing facial identity verifications at each step
+    of care (reception, consultation, pharmacy, etc.) to reduce fraud.
+
+    Security: Does NOT store ANY images. Only scores and metadata.
+
+    Note: HistoryModel provides 'id' and 'uuid' automatically via annotation.
+    Do not define them explicitly.
+    """
+
+    # Foreign key to Claim (healthcare service claim)
+    claim = models.ForeignKey(
+        "claim.Claim",
+        on_delete=models.CASCADE,
+        related_name="facial_audits",
+        db_index=True,
+        help_text="The claim associated with this biometric checkpoint",
+    )
+
+    # Specific medical service (optional - identifies care step)
+    service = models.ForeignKey(
+        "medical.Service",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="facial_audits",
+        help_text="The specific medical service related to this checkpoint",
+    )
+
+    # Facial verification data
+    similarity_score = models.FloatField(
+        help_text="Similarity score between 0.0 (different) and 1.0 (identical)",
+    )
+
+    threshold_used = models.FloatField(
+        default=0.4,
+        help_text="Confidence threshold used for this verification",
+    )
+
+    is_verified = models.BooleanField(
+        help_text="True if verification succeeded (similarity_score >= threshold_used)",
+    )
+
+    # Context metadata
+    step_name = models.CharField(
+        max_length=100,
+        db_index=True,
+        help_text="Name of the care journey step (e.g. 'reception', 'consultation', 'pharmacy')",
+    )
+
+    device_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Identifier of the device that performed the verification",
+    )
+
+    # Automatic timestamp
+    audit_date = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+        help_text="Date and time of the biometric checkpoint",
+    )
+
+    # Additional metadata (JSON for flexibility)
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Additional metadata (provider, model_name, etc.)",
+    )
+
+    class Meta:
+        db_table = "claim_facial_audit"
+        verbose_name = "Claim Facial Audit"
+        verbose_name_plural = "Claim Facial Audits"
+        ordering = ["-audit_date"]
+        indexes = [
+            models.Index(fields=["claim", "audit_date"]),
+            models.Index(fields=["claim", "is_verified"]),
+            models.Index(fields=["step_name", "audit_date"]),
+        ]
+
+    def __str__(self):
+        verification_status = "✓" if self.is_verified else "✗"
+        return (
+            f"FacialAudit({verification_status} Claim={self.claim_id}, "
+            f"Step={self.step_name}, Score={self.similarity_score:.2f})"
+        )
+

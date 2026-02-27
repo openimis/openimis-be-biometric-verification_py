@@ -97,6 +97,21 @@ See `CLAUDE.md` for full provider implementation guide.
 
 ---
 
+## TODO / Known Limitations (POC)
+
+### Claim Code Mutability
+**Current implementation uses `claim_code` to link facial audits to claims during the verification flow.**
+
+⚠️ **POC Limitation:** The claim code (`claim.code`) can potentially be modified during the claim processing workflow. If the code changes after facial audits are created, those audits will remain linked via the foreign key to the claim record (by ID), but the code used for lookup during WebSocket verification will no longer match.
+
+**Production recommendation:** Switch to using `claim.uuid` instead of `claim.code` for linking facial audits, as UUIDs are immutable and more reliable for foreign key relationships. The current implementation prioritizes the QR code workflow where the claim code is more user-visible, but this comes at the cost of potential lookup failures if codes are reassigned.
+
+**Affected files:**
+- `consumers/biometric_consumer.py` — `_create_facial_audit()` method
+- Frontend QR code dialog and verification page
+
+---
+
 ## License
 
 LGPL-3.0 — consistent with openIMIS module licensing.

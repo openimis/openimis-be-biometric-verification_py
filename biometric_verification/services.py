@@ -1,6 +1,7 @@
 import base64
 import logging
 import os
+import statistics
 
 from .providers.base import VerificationResult
 
@@ -203,3 +204,112 @@ class BiometricService:
 
         with open(photo_path, "rb") as fh:
             return fh.read()
+
+    # ------------------------------------------------------------------
+    # Claim Fraud Risk Scoring
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def calculate_global_risk_score(claim_id):
+        """
+        Calculate the global fraud risk score for a claim based on all facial audits.
+
+        Risk score ranges from 0.0 (safe) to 1.0 (fraud suspected).
+
+        Business rules:
+        - If ANY audit has is_verified=False → risk jumps to 0.8+
+        - If variance in similarity scores is high → risk increases
+        - If all audits pass with consistent scores → low risk
+
+        Args:
+            claim_id: UUID or ID of the Claim
+
+        Returns:
+            dict with:
+                - risk_score (float): 0.0 to 1.0
+                - audit_count (int): number of audits
+                - failed_audits (int): number of failed verifications
+                - score_variance (float): variance in similarity scores
+                - risk_level (str): 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'
+        """
+        from .models import ClaimFacialAudit
+
+        # Fetch all facial audits for this claim
+        audits = ClaimFacialAudit.objects.filter(
+            claim_id=claim_id,
+            validity_to__isnull=True,  # Only active audits
+        ).order_by("audit_date")
+
+        audit_count = audits.count()
+
+        if audit_count == 0:
+            # No audits yet - no risk assessment possible
+            return {
+                "risk_score": 0.0,
+                "audit_count": 0,
+                "failed_audits": 0,
+                "score_variance": 0.0,
+                "risk_level": "UNKNOWN",
+                "message": "No facial audits recorded for this claim",
+            }
+
+        # Extract data from audits
+        failed_audits = audits.filter(is_verified=False).count()
+        similarity_scores = list(audits.values_list("similarity_score", flat=True))
+
+        # Calculate variance in similarity scores
+        score_variance = 0.0
+        if len(similarity_scores) > 1:
+            try:
+                score_variance = statistics.variance(similarity_scores)
+            except statistics.StatisticsError:
+                score_variance = 0.0
+
+        # Initialize base risk score
+        risk_score = 0.0
+
+        # Rule 1: If ANY audit failed → HIGH RISK (0.8+)
+        if failed_audits > 0:
+            failed_ratio = failed_audits / audit_count
+            risk_score = 0.8 + (0.2 * failed_ratio)  # 0.8 to 1.0
+            risk_score = min(risk_score, 1.0)
+
+        # Rule 2: High variance in similarity scores → MEDIUM to HIGH RISK
+        elif score_variance > 0.1:  # Threshold: 0.1 for variance
+            # Variance penalty: higher variance = more suspicious
+            variance_penalty = min(score_variance * 5, 0.6)  # Cap at 0.6
+            risk_score = 0.4 + variance_penalty  # 0.4 to 1.0
+
+        # Rule 3: Low average similarity score → MEDIUM RISK
+        elif similarity_scores:
+            avg_score = statistics.mean(similarity_scores)
+            if avg_score < 0.6:  # Low average confidence
+                risk_score = 0.4 + (0.6 - avg_score) * 0.5  # 0.4 to 0.7
+
+        # Rule 4: All audits pass with consistent scores → LOW RISK
+        else:
+            risk_score = 0.1  # Minimal baseline risk
+
+        # Determine risk level category
+        if risk_score >= 0.8:
+            risk_level = "CRITICAL"
+        elif risk_score >= 0.5:
+            risk_level = "HIGH"
+        elif risk_score >= 0.3:
+            risk_level = "MEDIUM"
+        else:
+            risk_level = "LOW"
+
+        logger.info(
+            f"Claim {claim_id} risk score: {risk_score:.2f} "
+            f"({risk_level}) - {audit_count} audits, {failed_audits} failed"
+        )
+
+        return {
+            "risk_score": round(risk_score, 3),
+            "audit_count": audit_count,
+            "failed_audits": failed_audits,
+            "score_variance": round(score_variance, 3),
+            "risk_level": risk_level,
+            "avg_similarity": round(statistics.mean(similarity_scores), 3) if similarity_scores else 0.0,
+        }
