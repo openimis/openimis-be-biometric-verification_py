@@ -148,7 +148,12 @@ class BiometricVerificationConsumer(AsyncConsumer):
 
         Also creates a ClaimFacialAudit record if claim_code is provided.
         """
-        logger.info(f"_perform_verification called at {current_time}")
+        logger.info("")
+        logger.info("╔" + "═" * 68 + "╗")
+        logger.info("║" + " " * 18 + "WEBSOCKET VERIFICATION REQUEST" + " " * 20 + "║")
+        logger.info("╚" + "═" * 68 + "╝")
+        logger.info(f"⏰ Timestamp: {current_time}")
+        logger.info(f"📊 Verification #{self.verification_count + 1}")
 
         insuree_uuid = payload.get('insuree_uuid')
         frame_b64 = payload.get('frame')
@@ -157,10 +162,17 @@ class BiometricVerificationConsumer(AsyncConsumer):
         service_uuid = payload.get('service_uuid')  # Optional
         device_id = payload.get('device_id', '')  # Optional
 
-        logger.info(f"Processing frame for insuree {insuree_uuid}, claim_code={claim_code}")
+        logger.info(f"📋 Request details:")
+        logger.info(f"   • Insuree UUID:  {insuree_uuid}")
+        logger.info(f"   • Claim code:    {claim_code or '(none)'}")
+        logger.info(f"   • Step name:     {step_name}")
+        logger.info(f"   • Frame size:    {len(frame_b64) if frame_b64 else 0} chars")
+        logger.info(f"   • Device:        {device_id[:50] if device_id else '(none)'}...")
 
         if not insuree_uuid or not frame_b64:
-            logger.warning(f"Missing data: insuree_uuid={insuree_uuid}, frame_b64={'present' if frame_b64 else 'missing'}")
+            logger.error(f"❌ Missing required data:")
+            logger.error(f"   • insuree_uuid: {'✓' if insuree_uuid else '✗ MISSING'}")
+            logger.error(f"   • frame_b64:    {'✓' if frame_b64 else '✗ MISSING'}")
             await self._send_error("Missing insuree_uuid or frame in payload")
             return
 
@@ -218,11 +230,26 @@ class BiometricVerificationConsumer(AsyncConsumer):
                 })
             })
 
-            logger.info(
-                f"Verification #{self.verification_count} for {insuree_uuid}: "
-                f"verified={result.verified}, confidence={result.confidence}, "
-                f"claim_code={claim_code}, step={step_name}, audit={audit_uuid}"
-            )
+            # Summary logging
+            logger.info("")
+            logger.info("╔" + "═" * 68 + "╗")
+            logger.info("║" + " " * 21 + "VERIFICATION COMPLETE" + " " * 27 + "║")
+            logger.info("╚" + "═" * 68 + "╝")
+            logger.info(f"✓ Verification #{self.verification_count} completed")
+            logger.info(f"✓ Insuree:       {insuree_uuid}")
+            logger.info(f"✓ Result:        {'✅ VERIFIED' if result.verified else '❌ NOT VERIFIED'}")
+            logger.info(f"✓ Confidence:    {result.confidence:.2f}%" if result.confidence else "✓ Confidence:    N/A")
+            logger.info(f"✓ Distance:      {result.distance:.6f}" if result.distance else "✓ Distance:      N/A")
+            logger.info(f"✓ Provider:      {result.provider}")
+            if claim_code:
+                logger.info(f"✓ Claim code:    {claim_code}")
+            if audit_uuid:
+                logger.info(f"✓ Audit UUID:    {audit_uuid}")
+            if result.error:
+                logger.error(f"✗ Error:         {result.error}")
+            logger.info("=" * 70)
+            logger.info("")
+
 
         except Exception as e:
             logger.error(f"Verification failed: {e}")

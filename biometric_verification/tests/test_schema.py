@@ -19,6 +19,7 @@ from django.test import SimpleTestCase
 from biometric_verification.schema import (
     ComputeInsureeEmbeddingMutation,
     VerifyFaceMutation,
+    Query,
 )
 
 
@@ -247,3 +248,88 @@ class TestComputeInsureeEmbeddingMutation(SimpleTestCase):
 
         self.assertFalse(result.success)
         self.assertEqual(result.error, "no reference photo")
+
+
+# ---------------------------------------------------------------------------
+# Query.resolve_claim_facial_audits
+# ---------------------------------------------------------------------------
+
+class TestClaimFacialAuditsQuery(SimpleTestCase):
+
+    def test_anonymous_user_raises_permission_denied(self):
+        """Anonymous users should not be able to query facial audits."""
+        with self.assertRaises(PermissionDenied):
+            Query.resolve_claim_facial_audits(
+                None,
+                _make_info(_anon_user()),
+                claim_uuid="some-uuid",
+            )
+
+    @patch("biometric_verification.schema.ClaimFacialAudit")
+    @patch("biometric_verification.schema.Claim")
+    def test_authenticated_user_returns_audits(self, mock_claim_model, mock_audit_model):
+        """Authenticated users should receive the list of facial audits."""
+        # Mock claim
+        mock_claim = MagicMock()
+        mock_claim.uuid = "claim-uuid"
+        mock_claim_model.objects.get.return_value = mock_claim
+
+        # Mock audits
+        mock_audit1 = MagicMock()
+        mock_audit1.uuid = "audit-1"
+        mock_audit1.claim.uuid = "claim-uuid"
+        mock_audit1.service = None
+        mock_audit1.similarity_score = 0.85
+        mock_audit1.threshold_used = 0.68
+        mock_audit1.is_verified = True
+        mock_audit1.step_name = "reception"
+        mock_audit1.device_id = "device-1"
+        mock_audit1.audit_date = "2026-03-05T10:00:00Z"
+        mock_audit1.metadata = {"provider": "deepface"}
+
+        mock_audit_queryset = MagicMock()
+        mock_audit_queryset.order_by.return_value = [mock_audit1]
+        mock_audit_model.objects.filter.return_value = mock_audit_queryset
+
+        result = Query.resolve_claim_facial_audits(
+            None,
+            _make_info(_auth_user()),
+            claim_uuid="claim-uuid",
+        )
+
+        # Verify claim was fetched
+        mock_claim_model.objects.get.assert_called_once_with(
+            uuid="claim-uuid",
+            validity_to__isnull=True,
+        )
+
+        # Verify audits were fetched
+        mock_audit_model.objects.filter.assert_called_once_with(
+            claim=mock_claim,
+            is_deleted=False,
+        )
+
+        # Verify result
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].uuid, "audit-1")
+        self.assertEqual(result[0].step_name, "reception")
+        self.assertTrue(result[0].is_verified)
+
+    @patch("biometric_verification.schema.Claim")
+    def test_claim_not_found_raises_value_error(self, mock_claim_model):
+        """Should raise ValueError when claim doesn't exist."""
+        # Create a custom exception class for DoesNotExist
+        class DoesNotExistException(Exception):
+            pass
+
+        mock_claim_model.DoesNotExist = DoesNotExistException
+        mock_claim_model.objects.get.side_effect = DoesNotExistException("Claim not found")
+
+        with self.assertRaises(ValueError) as context:
+            Query.resolve_claim_facial_audits(
+                None,
+                _make_info(_auth_user()),
+                claim_uuid="non-existent-uuid",
+            )
+
+        self.assertIn("not found", str(context.exception))

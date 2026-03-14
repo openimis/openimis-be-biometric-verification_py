@@ -6,7 +6,8 @@ DEFAULT_CFG = {
     "provider": "deepface",
     "provider_config": {
         "model_name": "ArcFace",
-        "detector_backend": "opencv",
+        "detector_backend": "retinaface",  # Changed from opencv - more accurate face detection
+        "enforce_detection": True,          # CRITICAL: Ensure face is detected
     },
     "store_embeddings": True,
     "similarity_threshold": 0.68,

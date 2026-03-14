@@ -101,15 +101,76 @@ class BaseBiometricProvider(ABC):
             threshold:           Distance threshold override.
         """
         try:
+            logger.info("🚀 Fast path: verify_from_embedding (using pre-computed reference)")
+            logger.info(f"   Reference embedding dimension: {len(reference_embedding)}")
+
             probe_embedding = self.get_embedding(probe_image)
+            logger.info(f"   Probe embedding dimension: {len(probe_embedding)}")
 
             if threshold is None:
                 from biometric_verification.apps import BiometricVerificationConfig
-                threshold = 1.0 - (BiometricVerificationConfig.similarity_threshold or 0.68)
+                # Use threshold directly - for cosine distance, lower values mean more similar
+                # ArcFace default threshold is 0.68 (already a distance threshold, not similarity score)
+                threshold = BiometricVerificationConfig.similarity_threshold or 0.68
+                logger.info(f"📏 Using configured threshold: {threshold:.6f}")
+            else:
+                logger.info(f"📏 Using custom threshold: {threshold:.6f}")
 
             distance = _cosine_distance(probe_embedding, reference_embedding)
             verified = distance <= threshold
             confidence = round(max(0.0, min(100.0, (1.0 - distance) * 100)), 2)
+
+            # Detailed logging with interpretation
+            logger.info("")
+            logger.info("="*70)
+            logger.info("🎯 EMBEDDING VERIFICATION RESULT")
+            logger.info("="*70)
+            logger.info(f"✓ Provider:      {self.provider_name}")
+            logger.info(f"✓ Distance:      {distance:.6f} (cosine distance)")
+            logger.info(f"✓ Threshold:     {threshold:.6f}")
+            logger.info(f"✓ Confidence:    {confidence:.2f}%")
+            logger.info(f"✓ Verified:      {verified}")
+            logger.info("")
+
+            if verified:
+                logger.info(f"✅ MATCH! Distance {distance:.6f} ≤ threshold {threshold:.6f}")
+                if confidence > 90:
+                    logger.info("   🌟 Excellent match (>90% confidence)")
+                elif confidence > 75:
+                    logger.info("   👍 Good match (75-90% confidence)")
+                else:
+                    logger.info("   ✓ Acceptable match")
+            else:
+                logger.info(
+                    f"❌ NO MATCH. Distance {distance:.6f} > threshold {threshold:.6f}"
+                )
+                gap = distance - threshold
+                logger.warning(f"   Distance exceeded threshold by {gap:.6f}")
+
+                # Provide helpful interpretation
+                if distance > 0.8:
+                    logger.warning("   ⚠ Very high distance (>0.8) - likely different people")
+                    logger.warning("   💡 Check: Correct insuree? Correct reference photo?")
+                elif distance > 0.6:
+                    logger.warning("   ⚠ High distance (0.6-0.8) - faces appear quite different")
+                    logger.warning("   💡 Possible causes:")
+                    logger.warning("      - Significant aging since enrollment")
+                    logger.warning("      - Different lighting conditions")
+                    logger.warning("      - Facial hair, glasses, or other changes")
+                    logger.warning("      - Poor camera angle or quality")
+                elif distance > threshold:
+                    logger.warning("   ⚠ Marginal fail - close to passing threshold")
+                    logger.warning("   💡 Suggestions to improve:")
+                    logger.warning("      - Ensure good lighting (avoid shadows on face)")
+                    logger.warning("      - Center face in camera")
+                    logger.warning("      - Remove glasses/mask if possible")
+                    logger.warning("      - Look directly at camera")
+                    logger.warning(
+                        f"      - Or adjust threshold to {distance + 0.01:.6f} if appropriate"
+                    )
+
+            logger.info("="*70)
+            logger.info("")
 
             return VerificationResult(
                 verified=verified,
@@ -119,6 +180,7 @@ class BaseBiometricProvider(ABC):
             )
         except Exception as exc:
             logger.exception("verify_from_embedding failed in %s", self.provider_name)
+            logger.error(f"❌ EMBEDDING VERIFICATION ERROR: {str(exc)}")
             return VerificationResult(
                 verified=False,
                 provider=self.provider_name,

@@ -27,15 +27,10 @@ def update_claim_risk_score_on_audit(sender, instance, created, **kwargs):
         instance: The ClaimFacialAudit instance that was saved
         created: Boolean - True if this is a new record
         **kwargs: Additional signal arguments
+
+    Note: ClaimFacialAudit is an immutable audit trail - no soft-delete.
     """
     from .services import BiometricService
-
-    # Only process if the audit is active (not soft-deleted)
-    if instance.validity_to is not None:
-        logger.debug(
-            f"Skipping risk score update for soft-deleted audit {instance.uuid}"
-        )
-        return
 
     claim_id = instance.claim_id
     action = "created" if created else "updated"

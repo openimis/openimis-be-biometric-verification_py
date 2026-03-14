@@ -263,18 +263,18 @@ class CreateClaimFacialAuditMutation(graphene.Mutation):
             raise ValueError(f"Claim with UUID {claim_uuid} not found")
 
         # Fetch service if provided
-        ## To do : Idea was to get last service entry in the claim. 
+        ## To do : Idea was to get last service entry in the claim.
         # But not realistic as the claim is not save before the Face recognition processing
-        # Final process should be refined if we want to track the verification on 
+        # Final process should be refined if we want to track the verification on
         # each services / department of the HF
-        # 
-        # service = None
-        # if service_uuid:
-        #     from medical.models import Service
-        #     try:
-        #         service = Service.objects.get(uuid=service_uuid, validity_to__isnull=True)
-        #     except Service.DoesNotExist:
-        #         raise ValueError(f"Service with UUID {service_uuid} not found")
+
+        service = None
+        if service_uuid:
+            from medical.models import Service
+            try:
+                service = Service.objects.get(uuid=service_uuid, validity_to__isnull=True)
+            except Service.DoesNotExist:
+                raise ValueError(f"Service with UUID {service_uuid} not found")
 
         # Create audit record
         audit = ClaimFacialAudit.objects.create(
@@ -304,6 +304,12 @@ class Query(graphene.ObjectType):
         description="Get fraud risk assessment for a claim based on facial audits.",
     )
 
+    claim_facial_audits = graphene.List(
+        ClaimFacialAuditType,
+        claim_uuid=graphene.String(required=True),
+        description="Get all facial audits for a specific claim.",
+    )
+
     @staticmethod
     def resolve_claim_risk_assessment(root, info, claim_uuid):
         user = info.context.user
@@ -323,6 +329,45 @@ class Query(graphene.ObjectType):
         risk_data = BiometricService.calculate_global_risk_score(claim.id)
 
         return ClaimRiskAssessmentType(**risk_data)
+
+    @staticmethod
+    def resolve_claim_facial_audits(root, info, claim_uuid):
+        user = info.context.user
+        if user.is_anonymous:
+            raise PermissionDenied(_("unauthorized"))
+
+        from .models import ClaimFacialAudit
+        from claim.models import Claim
+
+        # Fetch claim to validate it exists
+        try:
+            claim = Claim.objects.get(uuid=claim_uuid, validity_to__isnull=True)
+        except Claim.DoesNotExist:
+            raise ValueError(f"Claim with UUID {claim_uuid} not found")
+
+        # Fetch all facial audits for this claim, ordered by audit date
+        # Note: ClaimFacialAudit uses HistoryModel which has is_deleted instead of validity_to
+        audits = ClaimFacialAudit.objects.filter(
+            claim=claim,
+            is_deleted=False
+        ).order_by('-audit_date')
+
+        # Convert to ClaimFacialAuditType objects
+        return [
+            ClaimFacialAuditType(
+                uuid=str(audit.uuid),
+                claim_id=str(audit.claim.uuid),
+                service_id=str(audit.service.uuid) if audit.service else None,
+                similarity_score=audit.similarity_score,
+                threshold_used=audit.threshold_used,
+                is_verified=audit.is_verified,
+                step_name=audit.step_name,
+                device_id=audit.device_id,
+                audit_date=audit.audit_date,
+                metadata=audit.metadata,
+            )
+            for audit in audits
+        ]
 
 
 class Mutation(graphene.ObjectType):

@@ -55,6 +55,15 @@ class BiometricEmbedding(models.Model):
         help_text="Provider that computed the embedding (e.g. deepface, aws_rekognition).",
     )
 
+    # Configuration snapshot — stores the complete provider config used to compute this embedding.
+    # This allows detecting when the config has changed (e.g. detector_backend changed from opencv to retinaface)
+    # and automatically invalidating/recalculating outdated embeddings.
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Complete configuration used to compute this embedding (detector_backend, enforce_detection, etc.).",
+    )
+
     # Timestamps
     computed_at = models.DateTimeField(
         auto_now=True,

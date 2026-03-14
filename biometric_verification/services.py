@@ -69,38 +69,106 @@ class BiometricService:
             from .apps import BiometricVerificationConfig
             from insuree.models import Insuree
 
+            logger.info("━" * 70)
+            logger.info("🔐 BiometricService.verify_face() called")
+            logger.info(f"   Insuree UUID: {insuree_uuid}")
+            logger.info(f"   Frame size: {len(frame_b64)} chars (base64)")
+            logger.info("━" * 70)
+
             provider = ProviderRegistry.get_active_provider()
+            logger.info(f"✓ Active provider: {provider.provider_name}")
+
             probe_bytes = BiometricService._decode_frame(frame_b64)
+            logger.info(f"✓ Decoded frame: {len(probe_bytes)} bytes")
 
             insuree = Insuree.objects.get(uuid=insuree_uuid, validity_to__isnull=True)
+            logger.info(f"✓ Found insuree: {insuree.chf_id} ({insuree.other_names} {insuree.last_name})")
 
             # Fast path — stored embedding present and active
             if BiometricVerificationConfig.store_embeddings:
+                logger.info("🚀 Fast path enabled (STORE_EMBEDDINGS=True)")
                 try:
                     stored = insuree.biometric_embedding  # OneToOne reverse accessor
                     if stored.is_active:
+                        logger.info(f"✓ Found active embedding: {stored.model_name}, computed {stored.computed_at}")
+                        logger.info(f"   Embedding dimension: {len(stored.embedding)}")
+
+                        # Check if the embedding was computed with the current configuration
+                        current_config = {
+                            "model_name": getattr(provider, "model_name", "unknown"),
+                            "provider": provider.provider_name,
+                            **BiometricVerificationConfig.provider_config,
+                        }
+
+                        # Compare stored config with current config
+                        config_changed = stored.metadata != current_config
+
+                        if config_changed:
+                            logger.warning("⚠ Embedding configuration has changed!")
+                            logger.warning(f"   Stored config: {stored.metadata}")
+                            logger.warning(f"   Current config: {current_config}")
+                            logger.info("🔄 Recalculating embedding with new configuration...")
+
+                            # Recalculate embedding with current config
+                            embedding_result = BiometricService.compute_insuree_embedding(
+                                insuree_uuid, user=None
+                            )
+
+                            if embedding_result.success:
+                                logger.info("✓ Embedding recalculated successfully")
+                                # Reload the fresh embedding
+                                insuree.refresh_from_db()
+                                stored = insuree.biometric_embedding
+                            else:
+                                logger.error(f"✗ Failed to recalculate embedding: {embedding_result.error}")
+                                logger.info("→ Falling back to slow path")
+                                raise Exception("Embedding recalculation failed")
+                        else:
+                            logger.info("✓ Embedding config matches current config")
+
                         result = provider.verify_from_embedding(
                             probe_image=probe_bytes,
                             reference_embedding=stored.embedding,
                         )
                         return _VerifyFaceResult(result)
-                except Exception:
+                    else:
+                        logger.warning("⚠ Stored embedding is inactive, falling back to slow path")
+                except Exception as e:
                     # No stored embedding yet — fall through to slow path
-                    logger.debug(
-                        "No active embedding for insuree %s, falling back to image comparison.",
-                        insuree_uuid,
+                    logger.warning(
+                        f"⚠ No active embedding for insuree {insuree_uuid}: {e}"
                     )
+                    logger.info("→ Falling back to image-vs-image comparison")
 
             # Slow path — full image-vs-image comparison
+            logger.info("🐢 Slow path: Full image-vs-image comparison")
             reference_bytes = BiometricService._fetch_insuree_photo(insuree)
+            logger.info(f"✓ Loaded reference photo: {len(reference_bytes)} bytes")
+
             result = provider.verify(
                 probe_image=probe_bytes,
                 reference_image=reference_bytes,
             )
+
+            # After successful slow path verification, compute and store embedding for future fast path use
+            if result.verified and BiometricVerificationConfig.store_embeddings:
+                logger.info("💾 Verification successful - computing embedding for future fast path...")
+                try:
+                    embedding_result = BiometricService.compute_insuree_embedding(
+                        insuree_uuid, user=None
+                    )
+                    if embedding_result.success:
+                        logger.info("✓ Embedding stored - next verification will use fast path")
+                    else:
+                        logger.warning(f"⚠ Failed to store embedding: {embedding_result.error}")
+                except Exception as e:
+                    logger.warning(f"⚠ Failed to compute embedding after verification: {e}")
+
             return _VerifyFaceResult(result)
 
         except Exception as exc:
             logger.exception("verify_face failed for insuree %s", insuree_uuid)
+            logger.error(f"❌ BiometricService.verify_face FAILED: {str(exc)}")
             return _VerifyFaceResult(
                 VerificationResult(verified=False, error=str(exc))
             )
@@ -126,18 +194,28 @@ class BiometricService:
             embedding_vector = provider.get_embedding(photo_bytes)
             model_name = getattr(provider, "model_name", "unknown")
 
+            # Capture the complete provider configuration used to compute this embedding
+            # This allows detecting when the config has changed (e.g. detector_backend changed)
+            from .apps import BiometricVerificationConfig
+            provider_config_snapshot = {
+                "model_name": model_name,
+                "provider": provider.provider_name,
+                **BiometricVerificationConfig.provider_config,  # Includes detector_backend, enforce_detection, etc.
+            }
+
             # Invalidate previous active embedding (soft-delete)
             BiometricEmbedding.objects.filter(
                 insuree=insuree,
                 validity_to__isnull=True,
             ).update(validity_to=timezone.now())
 
-            # Persist new embedding
+            # Persist new embedding with configuration snapshot
             BiometricEmbedding.objects.create(
                 insuree=insuree,
                 embedding=embedding_vector,
                 model_name=model_name,
                 provider=provider.provider_name,
+                metadata=provider_config_snapshot,  # Store complete config
             )
 
             logger.info(
@@ -145,6 +223,9 @@ class BiometricService:
                 insuree_uuid,
                 model_name,
                 provider.provider_name,
+            )
+            logger.info(
+                "Stored embedding with config snapshot: %s", provider_config_snapshot
             )
             return _EmbeddingResult(
                 success=True,
@@ -235,9 +316,9 @@ class BiometricService:
         from .models import ClaimFacialAudit
 
         # Fetch all facial audits for this claim
+        # Note: ClaimFacialAudit is an immutable audit trail - all records are active
         audits = ClaimFacialAudit.objects.filter(
             claim_id=claim_id,
-            validity_to__isnull=True,  # Only active audits
         ).order_by("audit_date")
 
         audit_count = audits.count()
